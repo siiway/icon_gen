@@ -4,18 +4,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "icon_gen", about = "Generate favicon icon sets from a single SVG")]
+#[command(
+    name = "icon_gen",
+    about = "Generate favicon icon sets from a single SVG"
+)]
 struct Args {
     #[arg(short, long, help = "Input SVG file")]
     input: PathBuf,
 
-    #[arg(long, help = "Input Markdown template used for AUTO_FILE_LIST_START/END replacement")]
+    #[arg(
+        long,
+        help = "Input Markdown template used for AUTO_FILE_LIST_START/END replacement"
+    )]
     input_markdown: Option<PathBuf>,
 
     #[arg(short, long, help = "Output directory")]
     output: PathBuf,
 
-    #[arg(short, long, help = "Also write a README.md with a file-list in the output directory")]
+    #[arg(
+        short,
+        long,
+        help = "Also write a README.md with a file-list in the output directory"
+    )]
     gen_markdown: bool,
 
     #[arg(long, help = "Output markdown path (default: <output>/README.md)")]
@@ -178,9 +188,7 @@ fn add_background_rect(svg: &str, fill: &str) -> String {
     let insert_pos = svg_start + tag_end_rel + 1;
     let before = &svg[..insert_pos];
     let after = &svg[insert_pos..];
-    format!(
-        "{before}<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"{fill}\"/>{after}"
-    )
+    format!("{before}<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"{fill}\"/>{after}")
 }
 
 // ---------------------------------------------------------------------------
@@ -191,8 +199,7 @@ fn render_png(svg_data: &str, size: u32) -> Result<Vec<u8>> {
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_str(svg_data, &opt).context("Failed to parse SVG")?;
 
-    let mut pixmap =
-        tiny_skia::Pixmap::new(size, size).context("Failed to allocate pixmap")?;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size).context("Failed to allocate pixmap")?;
 
     let scale_x = size as f32 / tree.size().width();
     let scale_y = size as f32 / tree.size().height();
@@ -211,11 +218,10 @@ fn generate_ico(svg_data: &str, path: &Path) -> Result<()> {
 
     for &size in ICO_SIZES {
         let opt = usvg::Options::default();
-        let tree =
-            usvg::Tree::from_str(svg_data, &opt).context("Failed to parse SVG for ICO")?;
+        let tree = usvg::Tree::from_str(svg_data, &opt).context("Failed to parse SVG for ICO")?;
 
-        let mut pixmap = tiny_skia::Pixmap::new(size, size)
-            .context("Failed to allocate pixmap for ICO")?;
+        let mut pixmap =
+            tiny_skia::Pixmap::new(size, size).context("Failed to allocate pixmap for ICO")?;
 
         let scale_x = size as f32 / tree.size().width();
         let scale_y = size as f32 / tree.size().height();
@@ -230,8 +236,8 @@ fn generate_ico(svg_data: &str, path: &Path) -> Result<()> {
         icon_dir.add_entry(ico::IconDirEntry::encode(&image).context("ICO encode error")?);
     }
 
-    let file = fs::File::create(path)
-        .with_context(|| format!("Cannot create {}", path.display()))?;
+    let file =
+        fs::File::create(path).with_context(|| format!("Cannot create {}", path.display()))?;
     icon_dir.write(file).context("Failed to write ICO")?;
     Ok(())
 }
@@ -251,8 +257,7 @@ fn generate_favicon_set(svg_data: &str, dir: &Path, label: &str, debug: bool) ->
         let png = render_png(svg_data, size)
             .with_context(|| format!("Render failed for {filename} ({size}x{size})"))?;
         let path = dir.join(filename);
-        fs::write(&path, &png)
-            .with_context(|| format!("Write failed for {filename}"))?;
+        fs::write(&path, &png).with_context(|| format!("Write failed for {filename}"))?;
         if debug {
             println!("Debug: Wrote {} ({} bytes)", path.display(), png.len());
         }
@@ -274,7 +279,11 @@ fn generate_favicon_set(svg_data: &str, dir: &Path, label: &str, debug: bool) ->
     let manifest_path = dir.join("site.webmanifest");
     fs::write(&manifest_path, WEBMANIFEST)?;
     if debug {
-        println!("Debug: Wrote {} ({} bytes)", manifest_path.display(), WEBMANIFEST.len());
+        println!(
+            "Debug: Wrote {} ({} bytes)",
+            manifest_path.display(),
+            WEBMANIFEST.len()
+        );
     }
     println!("  {label}/site.webmanifest");
 
@@ -312,17 +321,17 @@ fn human_readable_size(bytes: u64) -> String {
 /// Returns a built-in description for well-known favicon filenames, or `""`.
 fn description_for(name: &str) -> &'static str {
     match name {
-        "favicon-16x16.png"       => "16x16",
-        "favicon-32x32.png"       => "32x32",
-        "apple-touch-icon.png"    => "180x180",
+        "favicon-16x16.png" => "16x16",
+        "favicon-32x32.png" => "32x32",
+        "apple-touch-icon.png" => "180x180",
         "android-chrome-192x192.png" => "192x192",
         "android-chrome-512x512.png" => "512x512",
-        "favicon.ico"             => "48x48",
-        "site.webmanifest"        => "Webmanifest config file",
-        "icon.svg"                => "Source",
-        "icon-dark.svg"           => "Dark mode source",
-        "icon-light.svg"          => "Light mode source",
-        _                         => "",
+        "favicon.ico" => "48x48",
+        "site.webmanifest" => "Webmanifest config file",
+        "icon.svg" => "Source",
+        "icon-dark.svg" => "Dark mode source",
+        "icon-light.svg" => "Light mode source",
+        _ => "",
     }
 }
 
@@ -374,9 +383,7 @@ fn build_markdown_list(dir: &Path) -> Result<String> {
                 if cpath.is_dir() {
                     lines.push(format!("  - [**{cname}/**](./{rel}/)"));
                 } else {
-                    let size = fs::metadata(&cpath)
-                        .map(|m| m.len())
-                        .unwrap_or(0);
+                    let size = fs::metadata(&cpath).map(|m| m.len()).unwrap_or(0);
                     let size_str = human_readable_size(size);
                     let desc = description_for(&cname);
                     let desc_part = if desc.is_empty() {
@@ -384,9 +391,7 @@ fn build_markdown_list(dir: &Path) -> Result<String> {
                     } else {
                         format!(" - **{desc}**")
                     };
-                    lines.push(format!(
-                        "  - [{cname}](./{rel}) *({size_str})*{desc_part}"
-                    ));
+                    lines.push(format!("  - [{cname}](./{rel}) *({size_str})*{desc_part}"));
                 }
             }
         } else {
@@ -409,23 +414,35 @@ fn build_markdown_list(dir: &Path) -> Result<String> {
 ///
 /// When `template_md` is provided, only the content between
 /// `AUTO_FILE_LIST_START/END` markers is replaced.
-fn write_markdown(out_dir: &Path, template_md: Option<&Path>, output_md: Option<&Path>, debug: bool) -> Result<()> {
+fn write_markdown(
+    out_dir: &Path,
+    template_md: Option<&Path>,
+    output_md: Option<&Path>,
+    debug: bool,
+) -> Result<()> {
     let list = build_markdown_list(out_dir)?;
 
     let content = if let Some(template_path) = template_md {
-        let template = fs::read_to_string(template_path)
-            .with_context(|| format!("Cannot read markdown template: {}", template_path.display()))?;
+        let template = fs::read_to_string(template_path).with_context(|| {
+            format!("Cannot read markdown template: {}", template_path.display())
+        })?;
 
         let start_marker = "<!-- AUTO_FILE_LIST_START -->";
         let end_marker = "<!-- AUTO_FILE_LIST_END -->";
 
-        let start_idx = template
-            .find(start_marker)
-            .ok_or_else(|| anyhow::anyhow!("Missing AUTO_FILE_LIST_START marker in {}", template_path.display()))?;
+        let start_idx = template.find(start_marker).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Missing AUTO_FILE_LIST_START marker in {}",
+                template_path.display()
+            )
+        })?;
         let after_start = start_idx + start_marker.len();
-        let end_rel = template[after_start..]
-            .find(end_marker)
-            .ok_or_else(|| anyhow::anyhow!("Missing AUTO_FILE_LIST_END marker in {}", template_path.display()))?;
+        let end_rel = template[after_start..].find(end_marker).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Missing AUTO_FILE_LIST_END marker in {}",
+                template_path.display()
+            )
+        })?;
         let end_idx = after_start + end_rel;
 
         format!(
@@ -452,7 +469,10 @@ fn write_markdown(out_dir: &Path, template_md: Option<&Path>, output_md: Option<
     if let Some(parent) = readme.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).with_context(|| {
-                format!("Cannot create markdown output directory: {}", parent.display())
+                format!(
+                    "Cannot create markdown output directory: {}",
+                    parent.display()
+                )
             })?;
         }
     }
@@ -514,10 +534,20 @@ fn main() -> Result<()> {
     generate_favicon_set(&svg_content, &out.join("favicon"), "favicon", args.debug)?;
 
     println!("\nGenerating favicon-dark/ ...");
-    generate_favicon_set(&dark_svg, &out.join("favicon-dark"), "favicon-dark", args.debug)?;
+    generate_favicon_set(
+        &dark_svg,
+        &out.join("favicon-dark"),
+        "favicon-dark",
+        args.debug,
+    )?;
 
     println!("\nGenerating favicon-light/ ...");
-    generate_favicon_set(&light_svg, &out.join("favicon-light"), "favicon-light", args.debug)?;
+    generate_favicon_set(
+        &light_svg,
+        &out.join("favicon-light"),
+        "favicon-light",
+        args.debug,
+    )?;
 
     if args.gen_markdown || args.input_markdown.is_some() || args.output_markdown.is_some() {
         println!("\nGenerating README.md ...");
