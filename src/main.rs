@@ -59,38 +59,6 @@ const WEBMANIFEST: &str = r##"{
 // SVG colour-variant helpers
 // ---------------------------------------------------------------------------
 
-/// Injects an SVG `feColorMatrix` invert filter and wraps all child content in
-/// a `<g filter="…">` so the rendered result has inverted colours.
-fn apply_invert_filter(svg: &str) -> String {
-    let filter_def = concat!(
-        r#"<defs>"#,
-        r#"<filter id="__icg_inv__" color-interpolation-filters="sRGB">"#,
-        r#"<feColorMatrix type="matrix" "#,
-        r#"values="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0"/>"#,
-        r#"</filter>"#,
-        r#"</defs>"#,
-        r#"<g filter="url(#__icg_inv__)">"#,
-    );
-
-    let Some(svg_start) = svg.find("<svg") else {
-        return svg.to_string();
-    };
-    let Some(tag_end_rel) = svg[svg_start..].find('>') else {
-        return svg.to_string();
-    };
-    let insert_pos = svg_start + tag_end_rel + 1;
-    let before = &svg[..insert_pos];
-    let after = &svg[insert_pos..];
-
-    let Some(close_pos) = after.rfind("</svg>") else {
-        return svg.to_string();
-    };
-    let content = &after[..close_pos];
-    let tail = &after[close_pos..];
-
-    format!("{before}{filter_def}{content}</g>{tail}")
-}
-
 fn extract_attr_value(tag: &str, attr: &str) -> Option<String> {
     let needle = format!("{attr}=");
     let start = tag.find(&needle)? + needle.len();
