@@ -20,6 +20,9 @@ struct Args {
 
     #[arg(long, help = "Output markdown path (default: <output>/README.md)")]
     output_markdown: Option<PathBuf>,
+
+    #[arg(short = 'd', long, help = "Enable debug output")]
+    debug: bool,
 }
 
 /// PNG sizes to generate for each favicon set.
@@ -233,23 +236,46 @@ fn generate_ico(svg_data: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn generate_favicon_set(svg_data: &str, dir: &Path, label: &str) -> Result<()> {
+fn generate_favicon_set(svg_data: &str, dir: &Path, label: &str, debug: bool) -> Result<()> {
     fs::create_dir_all(dir)
         .with_context(|| format!("Cannot create directory {}", dir.display()))?;
 
+    if debug {
+        println!("Debug: Generating favicon set in {}", dir.display());
+    }
+
     for &(size, filename) in PNG_SIZES {
+        if debug {
+            println!("Debug: Rendering PNG {}x{}", size, size);
+        }
         let png = render_png(svg_data, size)
             .with_context(|| format!("Render failed for {filename} ({size}x{size})"))?;
-        fs::write(dir.join(filename), &png)
+        let path = dir.join(filename);
+        fs::write(&path, &png)
             .with_context(|| format!("Write failed for {filename}"))?;
+        if debug {
+            println!("Debug: Wrote {} ({} bytes)", path.display(), png.len());
+        }
         println!("  {label}/{filename}");
     }
 
+    if debug {
+        println!("Debug: Generating ICO with sizes {:?}", ICO_SIZES);
+    }
     generate_ico(svg_data, &dir.join("favicon.ico"))
         .with_context(|| format!("ICO generation failed in {label}"))?;
+    if debug {
+        let ico_path = dir.join("favicon.ico");
+        let size = fs::metadata(&ico_path).map(|m| m.len()).unwrap_or(0);
+        println!("Debug: Wrote {} ({} bytes)", ico_path.display(), size);
+    }
     println!("  {label}/favicon.ico");
 
-    fs::write(dir.join("site.webmanifest"), WEBMANIFEST)?;
+    let manifest_path = dir.join("site.webmanifest");
+    fs::write(&manifest_path, WEBMANIFEST)?;
+    if debug {
+        println!("Debug: Wrote {} ({} bytes)", manifest_path.display(), WEBMANIFEST.len());
+    }
     println!("  {label}/site.webmanifest");
 
     Ok(())
@@ -383,7 +409,7 @@ fn build_markdown_list(dir: &Path) -> Result<String> {
 ///
 /// When `template_md` is provided, only the content between
 /// `AUTO_FILE_LIST_START/END` markers is replaced.
-fn write_markdown(out_dir: &Path, template_md: Option<&Path>, output_md: Option<&Path>) -> Result<()> {
+fn write_markdown(out_dir: &Path, template_md: Option<&Path>, output_md: Option<&Path>, debug: bool) -> Result<()> {
     let list = build_markdown_list(out_dir)?;
 
     let content = if let Some(template_path) = template_md {
@@ -416,6 +442,10 @@ fn write_markdown(out_dir: &Path, template_md: Option<&Path>, output_md: Option<
         )
     };
 
+    if debug {
+        println!("Debug: Generated markdown content:\n{}", content);
+    }
+
     let readme = output_md
         .map(Path::to_path_buf)
         .unwrap_or_else(|| out_dir.join("README.md"));
@@ -440,6 +470,10 @@ fn main() -> Result<()> {
     let svg_content = fs::read_to_string(&args.input)
         .with_context(|| format!("Cannot read input: {}", args.input.display()))?;
 
+    if args.debug {
+        println!("Debug: Input SVG content:\n{}", svg_content);
+    }
+
     let out = &args.output;
     fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output dir: {}", out.display()))?;
@@ -448,24 +482,42 @@ fn main() -> Result<()> {
     // variants so dark/light outputs keep transparent backgrounds.
     let transparent_base_svg = strip_bw_background_rect(&svg_content);
 
+    if args.debug {
+        println!("Debug: Transparent base SVG:\n{}", transparent_base_svg);
+    }
+
     // dark  → original icon on black background (for transparent-source inputs)
     // light → original icon on white background (for transparent-source inputs)
     let dark_svg = add_background_rect(&transparent_base_svg, "#000000");
     let light_svg = add_background_rect(&transparent_base_svg, "#ffffff");
 
+    if args.debug {
+        println!("Debug: Dark SVG:\n{}", dark_svg);
+        println!("Debug: Light SVG:\n{}", light_svg);
+    }
+
     fs::write(out.join("icon.svg"), &svg_content)?;
+    if args.debug {
+        println!("Debug: Wrote {}", out.join("icon.svg").display());
+    }
     fs::write(out.join("icon-dark.svg"), &dark_svg)?;
+    if args.debug {
+        println!("Debug: Wrote {}", out.join("icon-dark.svg").display());
+    }
     fs::write(out.join("icon-light.svg"), &light_svg)?;
+    if args.debug {
+        println!("Debug: Wrote {}", out.join("icon-light.svg").display());
+    }
     println!("Saved SVG variants.");
 
     println!("\nGenerating favicon/ ...");
-    generate_favicon_set(&svg_content, &out.join("favicon"), "favicon")?;
+    generate_favicon_set(&svg_content, &out.join("favicon"), "favicon", args.debug)?;
 
     println!("\nGenerating favicon-dark/ ...");
-    generate_favicon_set(&dark_svg, &out.join("favicon-dark"), "favicon-dark")?;
+    generate_favicon_set(&dark_svg, &out.join("favicon-dark"), "favicon-dark", args.debug)?;
 
     println!("\nGenerating favicon-light/ ...");
-    generate_favicon_set(&light_svg, &out.join("favicon-light"), "favicon-light")?;
+    generate_favicon_set(&light_svg, &out.join("favicon-light"), "favicon-light", args.debug)?;
 
     if args.gen_markdown || args.input_markdown.is_some() || args.output_markdown.is_some() {
         println!("\nGenerating README.md ...");
@@ -473,6 +525,7 @@ fn main() -> Result<()> {
             out,
             args.input_markdown.as_deref(),
             args.output_markdown.as_deref(),
+            args.debug,
         )?;
     }
 
