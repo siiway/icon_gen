@@ -31,6 +31,14 @@ struct Args {
     #[arg(long, help = "Output markdown path (default: <output>/README.md)")]
     output_markdown: Option<PathBuf>,
 
+    #[arg(
+        short = 'b',
+        long,
+        default_value_t = 25,
+        help = "Border percentage (e.g. 50 = icon at 50%% size, 25 = 25%% padding)"
+    )]
+    border: u32,
+
     #[arg(short = 'd', long, help = "Enable debug output")]
     debug: bool,
 }
@@ -178,6 +186,8 @@ fn strip_bw_background_rect(svg: &str) -> String {
 }
 
 /// Adds a full-canvas background rectangle at the start of SVG content.
+/// Uses the viewBox coordinates when available so the rect covers the entire canvas,
+/// even when the viewBox has been expanded (e.g. for border/padding).
 fn add_background_rect(svg: &str, fill: &str) -> String {
     let Some(svg_start) = svg.find("<svg") else {
         return svg.to_string();
@@ -188,7 +198,88 @@ fn add_background_rect(svg: &str, fill: &str) -> String {
     let insert_pos = svg_start + tag_end_rel + 1;
     let before = &svg[..insert_pos];
     let after = &svg[insert_pos..];
-    format!("{before}<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"{fill}\"/>{after}")
+
+    let rect = if let Some((vx, vy, vw, vh)) = extract_viewbox(svg) {
+        format!("<rect x=\"{vx}\" y=\"{vy}\" width=\"{vw}\" height=\"{vh}\" fill=\"{fill}\"/>")
+    } else {
+        format!("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"{fill}\"/>")
+    };
+
+    format!("{before}{rect}{after}")
+}
+
+// ---------------------------------------------------------------------------
+// Border (padding) helper
+// ---------------------------------------------------------------------------
+
+/// Extract the viewBox attribute from the `<svg>` tag, returning (x, y, w, h).
+fn extract_viewbox(svg: &str) -> Option<(f64, f64, f64, f64)> {
+    let svg_start = svg.find("<svg")?;
+    let tag_end = svg_start + svg[svg_start..].find('>')?;
+    let tag = &svg[svg_start..=tag_end];
+    let vb = extract_attr_value(tag, "viewBox").or_else(|| extract_attr_value(tag, "viewbox"))?;
+    let parts: Vec<f64> = vb
+        .split_whitespace()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if parts.len() == 4 {
+        Some((parts[0], parts[1], parts[2], parts[3]))
+    } else {
+        None
+    }
+}
+
+/// Expand the SVG viewBox to add border/padding around the icon.
+///
+/// `border_percent` is how much of the canvas becomes padding.
+/// E.g. 50 → icon is 50% of the canvas, 25 → icon is 75% of the canvas.
+fn add_border_to_svg(svg: &str, border_percent: u32) -> Result<String> {
+    let (vx, vy, vw, vh) =
+        extract_viewbox(svg).context("SVG must have a viewBox attribute for border generation")?;
+
+    let scale = 100.0 / (100.0 - border_percent as f64);
+    let new_w = vw * scale;
+    let new_h = vh * scale;
+    let new_x = vx - (new_w - vw) / 2.0;
+    let new_y = vy - (new_h - vh) / 2.0;
+
+    let new_vb = format!("{new_x} {new_y} {new_w} {new_h}");
+
+    // Replace the viewBox in the <svg> tag
+    let svg_start = svg.find("<svg").unwrap();
+    let tag_end = svg_start + svg[svg_start..].find('>').unwrap();
+    let tag = &svg[svg_start..=tag_end];
+
+    // Find and replace the viewBox attribute value
+    let new_tag = if let Some(pos) = tag.find("viewBox=") {
+        let attr_start = pos + "viewBox=".len();
+        let quote = &tag[attr_start..attr_start + 1];
+        let rest = &tag[attr_start + 1..];
+        let val_end = rest.find(quote).unwrap();
+        format!(
+            "{}viewBox={quote}{new_vb}{quote}{}",
+            &tag[..pos],
+            &rest[val_end + 1..]
+        )
+    } else if let Some(pos) = tag.find("viewbox=") {
+        let attr_start = pos + "viewbox=".len();
+        let quote = &tag[attr_start..attr_start + 1];
+        let rest = &tag[attr_start + 1..];
+        let val_end = rest.find(quote).unwrap();
+        format!(
+            "{}viewBox={quote}{new_vb}{quote}{}",
+            &tag[..pos],
+            &rest[val_end + 1..]
+        )
+    } else {
+        anyhow::bail!("SVG tag has no viewBox attribute");
+    };
+
+    Ok(format!(
+        "{}{new_tag}{}",
+        &svg[..svg_start],
+        &svg[tag_end + 1..]
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +422,9 @@ fn description_for(name: &str) -> &'static str {
         "icon.svg" => "Source",
         "icon-dark.svg" => "Dark mode source",
         "icon-light.svg" => "Light mode source",
+        "border.svg" => "Source with border",
+        "border-dark.svg" => "Dark mode source with border",
+        "border-light.svg" => "Light mode source with border",
         _ => "",
     }
 }
@@ -548,6 +642,55 @@ fn main() -> Result<()> {
         "favicon-light",
         args.debug,
     )?;
+
+    // Border variants
+    {
+        let border_percent = args.border;
+        anyhow::ensure!(
+            border_percent > 0 && border_percent < 100,
+            "Border percentage must be between 1 and 99"
+        );
+
+        let border_svg = add_border_to_svg(&svg_content, border_percent)?;
+        let border_transparent = add_border_to_svg(&transparent_base_svg, border_percent)?;
+        let border_dark = add_background_rect(&border_transparent, "#000000");
+        let border_light = add_background_rect(&border_transparent, "#ffffff");
+
+        if args.debug {
+            println!("Debug: Border SVG:\n{}", border_svg);
+            println!("Debug: Border dark SVG:\n{}", border_dark);
+            println!("Debug: Border light SVG:\n{}", border_light);
+        }
+
+        fs::write(out.join("border.svg"), &border_svg)?;
+        fs::write(out.join("border-dark.svg"), &border_dark)?;
+        fs::write(out.join("border-light.svg"), &border_light)?;
+        println!("\nSaved border SVG variants.");
+
+        println!("\nGenerating border/ ...");
+        generate_favicon_set(
+            &border_transparent,
+            &out.join("border"),
+            "border",
+            args.debug,
+        )?;
+
+        println!("\nGenerating border-dark/ ...");
+        generate_favicon_set(
+            &border_dark,
+            &out.join("border-dark"),
+            "border-dark",
+            args.debug,
+        )?;
+
+        println!("\nGenerating border-light/ ...");
+        generate_favicon_set(
+            &border_light,
+            &out.join("border-light"),
+            "border-light",
+            args.debug,
+        )?;
+    }
 
     if args.gen_markdown || args.input_markdown.is_some() || args.output_markdown.is_some() {
         println!("\nGenerating README.md ...");
