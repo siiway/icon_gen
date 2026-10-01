@@ -39,6 +39,21 @@ struct Args {
     )]
     border: u32,
 
+    #[arg(
+        short = 's',
+        long,
+        help = "Also generate root icon PNG sizes (icon-16.png ... icon-512.png and icon.png) for showcase"
+    )]
+    showcase: bool,
+
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "16,32,48,64,96,128,180,192,256,512",
+        help = "Comma-separated sizes for showcase PNGs"
+    )]
+    showcase_sizes: Vec<u32>,
+
     #[arg(short = 'd', long, help = "Enable debug output")]
     debug: bool,
 }
@@ -623,6 +638,23 @@ fn main() -> Result<()> {
         println!("Debug: Wrote {}", out.join("icon-light.svg").display());
     }
     println!("Saved SVG variants.");
+
+    // Optional: generate root size PNGs for showcase
+    if args.showcase {
+        println!("\nGenerating root icon PNG sizes for showcase...");
+        for &size in &args.showcase_sizes {
+            let png = render_png(&svg_content, size)?;
+            let png_name = format!("icon-{size}.png");
+            fs::write(out.join(&png_name), &png)?;
+            if size == 256 {
+                fs::write(out.join("icon.png"), &png)?;
+            }
+            if args.debug {
+                println!("Debug: Wrote {}", out.join(&png_name).display());
+            }
+            println!("  {png_name}");
+        }
+    }
 
     println!("\nGenerating favicon/ ...");
     generate_favicon_set(&svg_content, &out.join("favicon"), "favicon", args.debug)?;
